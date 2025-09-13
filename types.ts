@@ -5,6 +5,7 @@ export interface Player {
   name: string;
   position: string;
   positionalRank?: number;
+  team?: string;
 }
 
 export interface FantasyTeam {

@@ -4,6 +4,17 @@ import { Player } from '../types';
 const BASE_POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K', 'DST', 'DEF'];
 
 /**
+ * Checks if a string part is a valid team abbreviation (2-4 uppercase letters).
+ * @param part The string part to analyze.
+ * @returns True if the part is a team abbreviation.
+ */
+function isTeam(part: string): boolean {
+    if (!part) return false;
+    // Simple regex for 2-4 uppercase letters, common for team abbreviations.
+    return /^[A-Z]{2,3}$/.test(part);
+}
+
+/**
  * Extracts a base position and rank from a string part (e.g., "QB1" -> {base: "QB", rank: 1}).
  * @param part The string part to analyze.
  * @returns An object with the base position and rank, or null if not a valid position.
@@ -28,8 +39,8 @@ function extractPositionAndRank(part: string): { base: string; rank?: number } |
 }
 
 /**
- * Parses fantasy football rankings from a space-delimited text block without using an AI API.
- * This version supports multiple formats and extracts positional rank info, but ignores team info.
+ * Parses fantasy football rankings from a space-delimited text block.
+ * This version supports multiple formats and extracts team and positional rank info.
  * @param text The raw string containing the rankings.
  * @returns A promise that resolves to an array of Player objects.
  */
@@ -40,44 +51,56 @@ export const parseRankingsFromText = async (text: string): Promise<Player[]> => 
       const lines = text.split('\n').filter(line => line.trim() !== '');
 
       for (const line of lines) {
-        // 1. Pre-process line: remove matchup info (e.g., "vs DEN", "@ KC")
-        const cleanLine = line.split(/ vs | @ /)[0];
+        const tabsReplaced = line.replace(/\t/g, ' ');
+        const cleanLine = tabsReplaced.split(/ vs | @ /)[0];
         const parts = cleanLine.trim().split(/\s+/);
-        
-        if (parts.length < 2) continue; // Must have at least rank and name/pos
 
+        if (parts.length < 2) continue;
+        console.log(parts);
         const rankStr = parts[0].replace(/[.\)]$/, '');
         const rank = parseInt(rankStr, 10);
         if (isNaN(rank)) continue;
 
         const potentialNameParts = parts.slice(1);
-        let positionInfo: { base: string; rank?: number } | null = null;
-        let positionPartIndex = -1;
+        if (potentialNameParts.length === 0) continue;
 
-        // Find position from the right-most part of the line
-        for (let i = potentialNameParts.length - 1; i >= 0; i--) {
-            const part = potentialNameParts[i];
-            const pos = extractPositionAndRank(part);
-            if (pos) {
-                positionInfo = pos;
-                positionPartIndex = i;
-                break; // Found the position, stop searching
-            }
+        let positionInfo: { base: string; rank?: number } | null = null;
+        let teamInfo: string | null = null;
+        let nameEndIndex = potentialNameParts.length;
+
+        const p1 = potentialNameParts[nameEndIndex - 1];
+        const p2 = nameEndIndex > 1 ? potentialNameParts[nameEndIndex - 2] : null;
+
+        const p1_pos = extractPositionAndRank(p1);
+        const p1_team = isTeam(p1);
+        const p2_pos = p2 ? extractPositionAndRank(p2) : null;
+        const p2_team = p2 ? isTeam(p2) : null;
+
+        if (p1_pos) { // Case: "... Team Pos" or "... Pos"
+          positionInfo = p1_pos;
+          if (p2_team) {
+            teamInfo = p2!.toUpperCase();
+            nameEndIndex -= 2;
+          } else {
+            nameEndIndex -= 1;
+          }
+        } else if (p1_team) { // Case: "... Pos Team"
+          teamInfo = p1.toUpperCase();
+          if (p2_pos) {
+            positionInfo = p2_pos;
+            nameEndIndex -= 2;
+          }
         }
 
-        if (positionInfo) {
-            // All parts up to the position are the player's name
-            const finalNameParts = potentialNameParts.slice(0, positionPartIndex);
-            const name = finalNameParts.join(' ');
-
-            if (name) {
-                players.push({
-                    rank,
-                    name,
-                    position: positionInfo.base,
-                    positionalRank: positionInfo.rank,
-                });
-            }
+        if (positionInfo && nameEndIndex > 0) {
+          const name = potentialNameParts.slice(0, nameEndIndex).join(' ');
+          players.push({
+            rank,
+            name,
+            position: positionInfo.base,
+            positionalRank: positionInfo.rank,
+            team: teamInfo ?? undefined,
+          });
         }
       }
       resolve(players);
