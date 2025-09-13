@@ -1,0 +1,5 @@
+{
+  "name": "Fantasy Rank Visualizer",
+  "description": "An application to scrape and visualize fantasy football rankings from a URL. Users can filter by position and favorite players, with favorites saved locally.",
+  "requestFramePermissions": []
+}
