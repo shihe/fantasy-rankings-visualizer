@@ -35,9 +35,12 @@ const LoaderIcon: React.FC = () => (
 interface RankingsInputFormProps {
   onSubmit: (text: string) => void;
   isLoading: boolean;
+  hideUnselectedPlayers: boolean;
+  onToggleHide: () => void;
+  hasPlayers: boolean;
 }
 
-const RankingsInputForm: React.FC<RankingsInputFormProps> = ({ onSubmit, isLoading }) => {
+const RankingsInputForm: React.FC<RankingsInputFormProps> = ({ onSubmit, isLoading, hideUnselectedPlayers, onToggleHide, hasPlayers }) => {
   const [text, setText] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -57,13 +60,23 @@ const RankingsInputForm: React.FC<RankingsInputFormProps> = ({ onSubmit, isLoadi
         disabled={isLoading}
         aria-label="Fantasy rankings input"
       />
-      <button
-        type="submit"
-        disabled={isLoading}
-        className="bg-cyan-600 text-white font-bold py-2 px-6 rounded-md hover:bg-cyan-700 disabled:bg-gray-500 disabled:cursor-not-allowed transition-colors self-end"
-      >
-        {isLoading ? 'Visualizing...' : 'Visualize Rankings'}
-      </button>
+      <div className="flex gap-2 self-end">
+        <button
+          type="button"
+          onClick={onToggleHide}
+          disabled={!hasPlayers}
+          className="bg-gray-600 text-white font-bold py-2 px-6 rounded-md hover:bg-gray-500 disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
+        >
+          {hideUnselectedPlayers ? 'Show All' : 'Hide Others'}
+        </button>
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="bg-cyan-600 text-white font-bold py-2 px-6 rounded-md hover:bg-cyan-700 disabled:bg-gray-500 disabled:cursor-not-allowed transition-colors"
+        >
+          {isLoading ? 'Visualizing...' : 'Visualize Rankings'}
+        </button>
+      </div>
     </form>
   );
 };
@@ -215,7 +228,7 @@ const PlayerTable: React.FC<PlayerTableProps> = ({ players, favorites, onToggleF
                   </button>
                 </td>
                 <td className="px-2 py-3 whitespace-nowrap text-center text-sm text-gray-300 bg-transparent">
-                    {player.positionalRank ? `${player.positionalRank}` : player.position}
+                    {player.positionalRank ? player.positionalRank : player.position}
                 </td>
                 <td className="px-2 py-3 whitespace-nowrap text-center text-sm font-medium text-gray-200 bg-transparent">{player.rank}</td>
                 <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-gray-100 bg-transparent">{player.name}</td>
@@ -246,6 +259,7 @@ export default function App() {
   const [favoriteNames, setFavoriteNames] = useLocalStorage<string[]>('fantasyFavorites', []);
   const [teams, setTeams] = useLocalStorage<FantasyTeam[]>('fantasyTeams', []);
   const [activeTeamNames, setActiveTeamNames] = useLocalStorage<string[]>('activeFantasyTeams', []);
+  const [hideUnselectedPlayers, setHideUnselectedPlayers] = useState(false);
 
   const favoritesSet = useMemo(() => new Set(favoriteNames), [favoriteNames]);
 
@@ -260,6 +274,10 @@ export default function App() {
       return Array.from(newFavorites);
     });
   }, [setFavoriteNames]);
+  
+  const handleToggleHide = useCallback(() => {
+    setHideUnselectedPlayers(prev => !prev);
+  }, []);
 
   const handleSubmitRankings = async (text: string) => {
     setIsLoading(true);
@@ -274,6 +292,27 @@ export default function App() {
       setIsLoading(false);
     }
   };
+  
+  const activeTeamPlayerNames = useMemo(() => {
+    const playerSet = new Set<string>();
+    const activeTeams = teams.filter(team => activeTeamNames.includes(team.name));
+    for (const team of activeTeams) {
+      for (const playerName of team.players) {
+        playerSet.add(playerName);
+      }
+    }
+    return playerSet;
+  }, [teams, activeTeamNames]);
+
+  const filteredPlayers = useMemo(() => {
+    if (!hideUnselectedPlayers) {
+      return players;
+    }
+    return players.filter(player =>
+      favoritesSet.has(player.name) || activeTeamPlayerNames.has(player.name)
+    );
+  }, [players, hideUnselectedPlayers, favoritesSet, activeTeamPlayerNames]);
+
 
   const playersByPosition = useMemo(() => {
     const grouped: Record<string, Player[]> = {};
@@ -281,7 +320,7 @@ export default function App() {
       grouped[pos] = [];
     });
 
-    const sortedByRank = [...players].sort((a, b) => a.rank - b.rank);
+    const sortedByRank = [...filteredPlayers].sort((a, b) => a.rank - b.rank);
 
     for (const player of sortedByRank) {
       const upperPos = player.position.toUpperCase();
@@ -290,7 +329,7 @@ export default function App() {
       }
     }
     return grouped;
-  }, [players]);
+  }, [filteredPlayers]);
 
   const playerHighlightColors = useMemo(() => {
     const colorMap: Record<string, string[]> = {};
@@ -321,7 +360,13 @@ export default function App() {
 
         <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="md:col-span-2">
-                <RankingsInputForm onSubmit={handleSubmitRankings} isLoading={isLoading} />
+                <RankingsInputForm 
+                  onSubmit={handleSubmitRankings} 
+                  isLoading={isLoading}
+                  hideUnselectedPlayers={hideUnselectedPlayers}
+                  onToggleHide={handleToggleHide}
+                  hasPlayers={players.length > 0}
+                />
             </div>
             <TeamManager 
                 teams={teams}
