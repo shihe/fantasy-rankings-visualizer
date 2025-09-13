@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Player, FantasyTeam } from './types';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { parseRankingsFromText } from './services/geminiService';
@@ -38,10 +38,11 @@ interface RankingsInputFormProps {
   hideUnselectedPlayers: boolean;
   onToggleHide: () => void;
   hasPlayers: boolean;
+  text: string;
+  onTextChange: (newText: string) => void;
 }
 
-const RankingsInputForm: React.FC<RankingsInputFormProps> = ({ onSubmit, isLoading, hideUnselectedPlayers, onToggleHide, hasPlayers }) => {
-  const [text, setText] = useState('');
+const RankingsInputForm: React.FC<RankingsInputFormProps> = ({ onSubmit, isLoading, hideUnselectedPlayers, onToggleHide, hasPlayers, text, onTextChange }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,7 +55,7 @@ const RankingsInputForm: React.FC<RankingsInputFormProps> = ({ onSubmit, isLoadi
     <form onSubmit={handleSubmit} className="flex flex-col gap-3 w-full">
       <textarea
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => onTextChange(e.target.value)}
         placeholder={`Paste your space-delimited rankings here...\nExample:\n1. Christian McCaffrey RB\n2. Breece Hall RB\n3. Josh Allen QB1`}
         className="flex-grow bg-gray-800 text-gray-200 border border-gray-600 rounded-md px-4 py-2 h-48 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition-shadow resize-y font-mono text-sm"
         disabled={isLoading}
@@ -71,7 +72,7 @@ const RankingsInputForm: React.FC<RankingsInputFormProps> = ({ onSubmit, isLoadi
         </button>
         <button
           type="submit"
-          disabled={isLoading}
+          disabled={isLoading || !text.trim()}
           className="bg-cyan-600 text-white font-bold py-2 px-6 rounded-md hover:bg-cyan-700 disabled:bg-gray-500 disabled:cursor-not-allowed transition-colors"
         >
           {isLoading ? 'Visualizing...' : 'Visualize Rankings'}
@@ -260,6 +261,7 @@ export default function App() {
   const [teams, setTeams] = useLocalStorage<FantasyTeam[]>('fantasyTeams', []);
   const [activeTeamNames, setActiveTeamNames] = useLocalStorage<string[]>('activeFantasyTeams', []);
   const [hideUnselectedPlayers, setHideUnselectedPlayers] = useState(false);
+  const [rawText, setRawText] = useLocalStorage<string>('fantasyRankingsText', '');
 
   const favoritesSet = useMemo(() => new Set(favoriteNames), [favoriteNames]);
 
@@ -279,7 +281,7 @@ export default function App() {
     setHideUnselectedPlayers(prev => !prev);
   }, []);
 
-  const handleSubmitRankings = async (text: string) => {
+  const handleSubmitRankings = useCallback(async (text: string) => {
     setIsLoading(true);
     setError(null);
     setPlayers([]);
@@ -291,8 +293,15 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
   
+  useEffect(() => {
+    if (rawText.trim()) {
+      handleSubmitRankings(rawText);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const activeTeamPlayerNames = useMemo(() => {
     const playerSet = new Set<string>();
     const activeTeams = teams.filter(team => activeTeamNames.includes(team.name));
@@ -366,6 +375,8 @@ export default function App() {
                   hideUnselectedPlayers={hideUnselectedPlayers}
                   onToggleHide={handleToggleHide}
                   hasPlayers={players.length > 0}
+                  text={rawText}
+                  onTextChange={setRawText}
                 />
             </div>
             <TeamManager 
